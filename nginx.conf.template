@@ -1,0 +1,23 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Resolver Docker embarque + variable dans proxy_pass : la resolution DNS
+    # du backend se fait a la requete, pas au demarrage de nginx. Ainsi le
+    # frontend demarre meme si le backend n'est pas (encore) joignable.
+    resolver 127.0.0.11 valid=10s;
+    set $backend_upstream "http://${BACKEND_HOST}:${BACKEND_PORT}";
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass $backend_upstream/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}

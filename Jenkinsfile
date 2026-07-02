@@ -64,10 +64,44 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                // Timeout large : le serveur SonarQube est partage entre eleves,
-                // la file d'attente du Compute Engine peut prendre plus de 5 min.
-                timeout(time: 15, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                // Polling manuel de l'API SonarQube plutot que waitForQualityGate :
+                // Jenkins tourne en local (localhost), le serveur SonarQube distant
+                // ne peut donc pas lui envoyer de webhook de notification. On
+                // interroge nous-memes l'API avec un intervalle maitrise (5s).
+                withCredentials([string(credentialsId: 'milena-sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        set -e
+                        REPORT_FILE=".scannerwork/report-task.txt"
+                        CE_TASK_URL=$(grep '^ceTaskUrl=' "$REPORT_FILE" | cut -d'=' -f2-)
+                        SERVER_URL=$(grep '^serverUrl=' "$REPORT_FILE" | cut -d'=' -f2-)
+
+                        echo "Polling Compute Engine task: $CE_TASK_URL"
+                        STATUS="PENDING"
+                        for i in $(seq 1 120); do
+                            RESPONSE=$(curl -s -u "$SONAR_TOKEN:" "$CE_TASK_URL")
+                            STATUS=$(echo "$RESPONSE" | jq -r '.task.status')
+                            echo "  [$i] Compute Engine task status: $STATUS"
+                            if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
+                                break
+                            fi
+                            sleep 5
+                        done
+
+                        if [ "$STATUS" != "SUCCESS" ]; then
+                            echo "Le traitement de l'analyse a echoue (status=$STATUS)"
+                            exit 1
+                        fi
+
+                        ANALYSIS_ID=$(echo "$RESPONSE" | jq -r '.task.analysisId')
+                        QG_RESPONSE=$(curl -s -u "$SONAR_TOKEN:" "${SERVER_URL}/api/qualitygates/project_status?analysisId=${ANALYSIS_ID}")
+                        QG_STATUS=$(echo "$QG_RESPONSE" | jq -r '.projectStatus.status')
+                        echo "Quality Gate status: $QG_STATUS"
+
+                        if [ "$QG_STATUS" != "OK" ]; then
+                            echo "Quality Gate en echec"
+                            exit 1
+                        fi
+                    '''
                 }
             }
         }

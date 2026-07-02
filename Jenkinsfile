@@ -1,7 +1,7 @@
-// Prérequis Jenkins (à configurer une seule fois, cf. Manage Jenkins) :
+// Prérequis Jenkins (instance partagée, config déjà en place cote ecole) :
 //   - Outil "SonarScanner" declare dans Manage Jenkins > Tools > SonarQube Scanner installations
-//   - Serveur "SonarQube" declare dans Manage Jenkins > System > SonarQube servers
-//   - Credential "dockerhub-credentials" (Username with password = token) dans Jenkins Credentials
+//   - Serveur "sonarqube-server-1" declare dans Manage Jenkins > System > SonarQube servers
+//   - Credential "milena-dockerhub-credentials" (Username with password = token Docker Hub)
 //   - Agent avec node, npm, docker et trivy disponibles sur le PATH
 
 pipeline {
@@ -52,7 +52,7 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
+                withSonarQubeEnv('sonarqube-server-1') {
                     sh "${tool 'SonarScanner'}/bin/sonar-scanner"
                 }
             }
@@ -88,7 +88,7 @@ pipeline {
 
         stage('Docker Push') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
+                withCredentials([usernamePassword(credentialsId: 'milena-dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
                     sh '''
                         echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USER" --password-stdin
                         docker push ${FULL_IMAGE}

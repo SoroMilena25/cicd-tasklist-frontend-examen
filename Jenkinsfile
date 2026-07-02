@@ -2,6 +2,8 @@
 //   - Outil "SonarScanner" declare dans Manage Jenkins > Tools > SonarQube Scanner installations
 //   - Serveur "sonarqube-server-1" declare dans Manage Jenkins > System > SonarQube servers
 //   - Credential "milena-dockerhub-credentials" (Username with password = token Docker Hub)
+//   - Credential "milena-sonarqube-token" (Secret text = token personnel SonarQube, requis
+//     car le token du serveur partage n'a pas le droit de creer un nouveau projet)
 //   - Agent avec node, npm, docker et trivy disponibles sur le PATH
 
 pipeline {
@@ -53,7 +55,9 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube-server-1') {
-                    sh "${tool 'SonarScanner'}/bin/sonar-scanner"
+                    withCredentials([string(credentialsId: 'milena-sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                        sh "${tool 'SonarScanner'}/bin/sonar-scanner -Dsonar.token=\$SONAR_TOKEN"
+                    }
                 }
             }
         }
